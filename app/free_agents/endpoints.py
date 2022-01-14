@@ -18,12 +18,11 @@ async def free_agents_json():
     s3_file = s3.Object('nate-api', 'sleeper-players.json')
 
     try:
-       last_modified = s3_file.last_modified
+        last_modified = s3_file.last_modified
     except botocore.exceptions.ClientError:
         # Presumably file does not exist
         last_modified = None
-    print("last modified value", last_modified)
-    
+
     if (
         last_modified is None or
         last_modified <= (datetime.utcnow().replace(tzinfo=timezone.utc) - timedelta(hours=1))
@@ -51,4 +50,4 @@ async def free_agents_json():
         if player_id not in rostered_ids:
             free_agents.append(player)
 
-    return free_agents[0:2]
+    return free_agents
