@@ -35,10 +35,12 @@ async def free_agents_json():
         print("Getting cached full list of players...")
         response = s3_file.get()
         all_players = json.loads(response['Body'].read())
+    print("Got full players")
 
     print("Getting rostered players...")
     response = requests.get('https://api.sleeper.app/v1/league/786679085437968384/rosters')
     rosters = response.json()
+    print("Got rostered players")
 
     rostered_ids = list()
     for roster in rosters:
@@ -50,4 +52,5 @@ async def free_agents_json():
         if player_id not in rostered_ids:
             free_agents.append(player)
 
+    print("Returning")
     return free_agents
