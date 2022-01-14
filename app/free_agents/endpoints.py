@@ -27,12 +27,27 @@ async def free_agents_json():
         last_modified is None or
         last_modified <= (datetime.utcnow().replace(tzinfo=timezone.utc) - timedelta(hours=1))
     ):
+        print("Getting updated full player list from sleeper...")
         response = requests.get('https://api.sleeper.app/v1/players/nfl')
-        players = response.json()
-        s3_file.put(Body=(bytes(json.dumps(players).encode('utf-8'))))
+        all_players = response.json()
+        s3_file.put(Body=(bytes(json.dumps(all_players).encode('utf-8'))))
     else:
+        print("Getting cached full list of players...")
         response = s3_file.get()
-        players = response['Body'].read()
+        all_players = json.loads(response['Body'].read())
 
-    return {"message": players}
+    print("Getting rostered players...")
+    response = requests.get('https://api.sleeper.app/v1/league/786679085437968384/rosters')
+    rosters = response.json()
 
+    rostered_ids = list()
+    for roster in rosters:
+        rostered_ids.extend(roster["players"])
+    rostered_ids = set(rostered_ids)
+
+    free_agents = list()
+    for player_id, player in all_players.items():
+        if player_id not in rostered_ids:
+            free_agents.append(player)
+
+    return free_agents[0:2]
