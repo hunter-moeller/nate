@@ -22,7 +22,8 @@ async def free_agents_json():
     except botocore.exceptions.ClientError:
         # Presumably file does not exist
         last_modified = None
-
+    print("last modified value", last_modified)
+    
     if (
         last_modified is None or
         last_modified <= (datetime.utcnow().replace(tzinfo=timezone.utc) - timedelta(hours=1))
