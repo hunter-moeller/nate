@@ -1,15 +1,15 @@
 from fastapi import FastAPI
 from mangum import Mangum
 
-from api.v1.api import router as api_router
+from free_agents import router as free_agents_router
 
 app = FastAPI(title='Serverless Lambda FastAPI')
 
-app.include_router(api_router, prefix="/api/v1")
+app.include_router(free_agents_router, prefix="/free-agents")
 
 
-@app.get("/",  tags=["Endpoint Test"])
-def main_endpoint_test():
+@app.get("/")
+def root():
     return {"message": "Nate the great lives!"}
 
 
