@@ -50,7 +50,9 @@ async def free_agents_json():
     free_agents = list()
     for player_id, player in all_players.items():
         if player_id not in rostered_ids:
-            free_agents.append(player)
+            search_rank = player.get("search_rank")
+            if search_rank is not None and search_rank < 1000:
+                free_agents.append(player)
 
     print("Returning")
     return free_agents
