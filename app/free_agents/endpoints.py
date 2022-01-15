@@ -1,19 +1,20 @@
-from datetime import datetime, timedelta, timezone
+import io
+import csv
 import json
+from datetime import datetime, timedelta, timezone
 
 import boto3
 import botocore.exceptions
 import requests
 
 from fastapi import APIRouter
+from fastapi.responses import StreamingResponse
 
 
 router = APIRouter()
 
 
-@router.get("/json")
-async def free_agents_json():
-
+def free_agents():
     s3 = boto3.resource('s3')
     s3_file = s3.Object('nate-api', 'sleeper-players.json')
 
@@ -47,12 +48,71 @@ async def free_agents_json():
         rostered_ids.extend(roster["players"])
     rostered_ids = set(rostered_ids)
 
+    allowed_positions = {
+        "K",
+        "QB",
+        "RB",
+        "TE",
+        "WR",
+    }
+
     free_agents = list()
     for player_id, player in all_players.items():
         if player_id not in rostered_ids:
             search_rank = player.get("search_rank")
             if search_rank is not None and search_rank < 1000:
-                free_agents.append(player)
+                if player.get("position") in allowed_positions:
+                    free_agents.append(player)
 
-    print("Returning")
     return free_agents
+
+
+@router.get("/json")
+async def free_agents_json():
+    return free_agents()
+
+
+@router.get("/download")
+async def free_agents_download():
+    encoding = 'utf-8'
+
+    writer_file = io.StringIO()
+    fields = [
+        "position",
+        "search_rank",
+        "status",
+        "active",
+        "first_name",
+        "last_name",
+        "depth_chart_order",
+        "age",
+        "years_exp",
+    ]
+    writer = csv.DictWriter(writer_file, fieldnames=fields, dialect='excel')
+    writer.writeheader()
+    rows = list()
+    for fa in free_agents():
+        row = dict()
+        eligible = True
+        for field in fields:
+            if field in fa:
+                row[field] = fa[field]
+            else:
+                eligible = False
+        if eligible:
+            rows.append(row)
+
+    rows = sorted(rows, key=lambda x: [x["position"], x["search_rank"]])
+    for row in rows:
+        writer.writerow(row)
+    content = writer_file.getvalue()
+    content = content.encode(encoding)
+
+    headers = {
+        'Content-Disposition': 'attachment; filename="players.csv"'
+    }
+
+    async def stream():
+        yield content
+
+    return StreamingResponse(stream(), headers=headers)
