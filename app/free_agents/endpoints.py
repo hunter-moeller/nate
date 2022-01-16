@@ -1,6 +1,7 @@
 import io
 import csv
 import json
+import time
 from datetime import datetime, timedelta, timezone
 
 import boto3
@@ -14,10 +15,45 @@ from fastapi.responses import StreamingResponse
 router = APIRouter()
 
 
+def player_rankings(position):
+    year = 2021
+    url = f"https://api.fantasypros.com/v2/json/nfl/%{year}/consensus-rankings?type=dynasty&scoring=PPR&position={position}&week=0&experts=available"
+    response = requests.get(
+        url,
+        headers={
+            'x-api-key': 'zjxN52G3lP4fORpHRftGI2mTU8cTwxVNvkjByM3j'
+        }
+    )
+    rankings = response.json()["players"]
+    return rankings
+
+
+def all_player_rankings():
+    rankings = list()
+
+    start = time.time()
+    rankings.extend(player_rankings('QB'))
+    rankings.extend(player_rankings('RB'))
+    rankings.extend(player_rankings('WR'))
+    rankings.extend(player_rankings('TE'))
+    took = time.time() - start
+    print(f"Took {took} seconds to get rankings")
+    return rankings
+
+
+def parse_sleeper_name(player):
+    return f"{player.get('first_name')}{player.get('last_name')}"
+
+
+def simplify_name(name):
+    # 'I' and 'V' from "the first" or "the fourth" are removed for higher match chance
+    return ''.join(c for c in name if c.isalpha() and c != 'I' and c != 'V').lower()
+
+
 def free_agents():
     s3 = boto3.resource('s3')
-    s3_file = s3.Object('nate-api', 'sleeper-players.json')
 
+    s3_file = s3.Object('nate-api', 'sleeper-players.json')
     try:
         last_modified = s3_file.last_modified
     except botocore.exceptions.ClientError:
@@ -41,8 +77,9 @@ def free_agents():
     print("Getting rostered players...")
     response = requests.get('https://api.sleeper.app/v1/league/786679085437968384/rosters')
     rosters = response.json()
-    print("Got rostered players")
+    print("Got rostered players...")
 
+    print('Determining rostered player name keys...')
     rostered_ids = list()
     for roster in rosters:
         rostered_ids.extend(roster["players"])
@@ -55,16 +92,44 @@ def free_agents():
         "TE",
         "WR",
     }
-
-    free_agents = list()
+    free_agent_names = set()
     for player_id, player in all_players.items():
-        if player_id not in rostered_ids:
-            search_rank = player.get("search_rank")
-            if search_rank is not None and search_rank < 1000:
-                if player.get("position") in allowed_positions:
-                    free_agents.append(player)
+        search_rank = player.get("search_rank")
+        if (
+            player_id not in rostered_ids
+            and search_rank is not None
+            and search_rank < 2000
+            and player.get("position") in allowed_positions
+        ):
+            name = simplify_name(parse_sleeper_name(player))
+            print(f"SIMPLIFIED SLEEPER NAME: {name}")
+            if name != '' and name is not None:
+                free_agent_names.add(name)
 
-    return free_agents
+    print("Getting player rankings...")
+    ranked_players = all_player_rankings()
+
+    print("Formatting player ranking data...")
+    final_fields = {
+        'player_position_id': 'position',
+        'tier': 'fantasy_pros_tier',
+        'player_name': 'name',
+        'rank_ecr': 'fantasy_pros_rank_ecr',
+        'player_owned_avg': 'percent_owned',
+        'player_age': 'age',
+        'player_team_id': 'team',
+    }
+    final_players = list()
+    for player in ranked_players:
+        name = simplify_name(player["player_name"])
+        print(f"SIMPLIFIED PROS NAME: {name}")
+        if name in free_agent_names:
+            final_player = dict()
+            for fp_field, field in final_fields.items():
+                final_player[field] = player.get(fp_field)
+            final_players.append(final_player)
+
+    return final_players
 
 
 @router.get("/json")
@@ -78,15 +143,13 @@ async def free_agents_download():
 
     writer_file = io.StringIO()
     fields = [
-        "position",
-        "search_rank",
-        "status",
-        "active",
-        "first_name",
-        "last_name",
-        "depth_chart_order",
-        "age",
-        "years_exp",
+        'position',
+        'fantasy_pros_tier',
+        'name',
+        'fantasy_pros_rank_ecr',
+        'percent_owned',
+        'age',
+        'team',
     ]
     writer = csv.DictWriter(writer_file, fieldnames=fields, dialect='excel')
     writer.writeheader()
@@ -102,7 +165,7 @@ async def free_agents_download():
         if eligible:
             rows.append(row)
 
-    rows = sorted(rows, key=lambda x: [x["position"], x["search_rank"]])
+    rows = sorted(rows, key=lambda x: [x["position"], x["fantasy_pros_rank_ecr"]])
     for row in rows:
         writer.writerow(row)
     content = writer_file.getvalue()
