@@ -9,7 +9,7 @@ import botocore.exceptions
 import requests
 
 from fastapi import APIRouter
-from fastapi.responses import StreamingResponse
+from fastapi.responses import Response, StreamingResponse
 
 
 router = APIRouter()
@@ -102,7 +102,7 @@ def free_agents():
             and player.get("position") in allowed_positions
         ):
             name = simplify_name(parse_sleeper_name(player))
-            print(f"SIMPLIFIED SLEEPER NAME: {name}")
+            # print(f"SIMPLIFIED SLEEPER NAME: {name}")
             if name != '' and name is not None:
                 free_agent_names.add(name)
 
@@ -122,7 +122,7 @@ def free_agents():
     final_players = list()
     for player in ranked_players:
         name = simplify_name(player["player_name"])
-        print(f"SIMPLIFIED PROS NAME: {name}")
+        # print(f"SIMPLIFIED PROS NAME: {name}")
         if name in free_agent_names:
             final_player = dict()
             for fp_field, field in final_fields.items():
@@ -134,7 +134,18 @@ def free_agents():
 
 @router.get("/json")
 async def free_agents_json():
-    return free_agents()
+
+    headers = {
+        'Access-Control-Allow-Headers': 'Content-Type',
+        'Access-Control-Allow-Origin': '*',
+        'Access-Control-Allow-Methods': 'OPTIONS,POST,GET'
+    }
+
+    return Response(
+        status_code=200,
+        headers=headers,
+        content=json.dumps(free_agents())
+    )
 
 
 @router.get("/download")
@@ -172,6 +183,9 @@ async def free_agents_download():
     content = content.encode(encoding)
 
     headers = {
+        'Access-Control-Allow-Headers': 'Content-Type',
+        'Access-Control-Allow-Origin': '*',
+        'Access-Control-Allow-Methods': 'OPTIONS,POST,GET',
         'Content-Disposition': 'attachment; filename="players.csv"',
         'Content-Type': 'text/csv',
     }
