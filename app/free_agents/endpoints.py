@@ -109,7 +109,8 @@ async def free_agents_download():
     content = content.encode(encoding)
 
     headers = {
-        'Content-Disposition': 'attachment; filename="players.csv"'
+        'Content-Disposition': 'attachment; filename="players.csv"',
+        'Content-Type': 'text/csv',
     }
 
     async def stream():
